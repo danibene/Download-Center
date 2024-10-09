@@ -14,6 +14,8 @@ import queue
 import sys
 import threading
 import time
+from datetime import datetime
+import csv
 
 import numpy as np
 import pyqtgraph as pg
@@ -35,9 +37,14 @@ elif prt_index == 2:
     sample_rate = 1000
 else:
     sample_rate = 500
+
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Initialization
 ENABLE_I_Q_PLOT = True
+save_to_csv = True  # Set this to True to save data to CSV
+csv_filename = f"radar_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+csv_save_interval = 1  # seconds between saves
+
 sample_time = 1 / sample_rate
 num_of_samples = 256
 window_time = 1  # second
@@ -50,7 +57,6 @@ epsilon_value = 0.00000001
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # data queue
 data_queue = queue.Queue()
-
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def read_data(sensor):
@@ -75,7 +81,6 @@ class MyProcessorClass:
                 if np.size(frame) == num_of_samples:
                     raw_data = np.roll(raw_data, -num_of_samples)
                     raw_data[-num_of_samples:] = frame
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -83,8 +88,6 @@ def update_plots():
     if ENABLE_I_Q_PLOT:
         I_Q_PLOT[0][0].setData(IQ_xaxis, np.real(raw_data))
         I_Q_PLOT[1][0].setData(IQ_xaxis, np.imag(raw_data))
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def generate_iq_plot():
@@ -105,41 +108,41 @@ def generate_iq_plot():
         plot_objects[j].append(plot_obj)
     return plot, plot_objects
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+def save_data_to_csv(data, filename):
+    # Append raw I and Q data into the existing CSV file
+    with open(filename, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        for i in range(len(data)):
+            writer.writerow([IQ_xaxis[i], np.real(data[i]), np.imag(data[i])])
 
-# Usage:
-if ENABLE_I_Q_PLOT:
-    iq_figure, I_Q_PLOT = generate_iq_plot()
-    iq_figure.show()
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+def periodic_save():
+    if save_to_csv:
+        save_data_to_csv(raw_data, csv_filename)
+    QTimer.singleShot(csv_save_interval * 1000, periodic_save)
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-app = QApplication([])
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-timer = QTimer()
-timer.timeout.connect(update_plots)
-timer.start(figure_update_time)  # Update the plots based on figure_update_time
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# main
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 if __name__ == "__main__":
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # connect to the device
+    # Initialize application and plots
+    app = QApplication([])
+
+    if ENABLE_I_Q_PLOT:
+        iq_figure, I_Q_PLOT = generate_iq_plot()
+        iq_figure.show()
+
+    # Connect to the device
     pp = pprint.PrettyPrinter()
     with DeviceLtr11() as device:
         print("Radar SDK Version: " + get_version())
         print("Sampling Frequency [Hz]: ", sample_rate)
-
-        sampling_frequency = device.get_sampling_frequency(prt_index)
-        config_defaults = device.get_config_defaults()
 
         config = Ltr11Config(
             aprt_factor=4,
             detector_threshold=80,
             disable_internal_detector=False,
             hold_time=8,
-            mode=0,  # 0: continuous wave mode, -- 1: pulse mode
+            mode=0,  # Continuous wave mode
             num_of_samples=num_of_samples,
             prt=prt_index,
             pulse_width=3,
@@ -150,16 +153,22 @@ if __name__ == "__main__":
         device.set_config(config)
 
         pp.pprint(device.get_config())
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # initialization
+
+        # Initialize raw data buffer
         raw_data = np.zeros(raw_data_size, dtype=np.complex128)
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Threads for reading data and processing
+
+        # Threads for reading and processing data
         data_thread = threading.Thread(target=read_data, args=(device,))
         data_thread.start()
 
         radar_processor = MyProcessorClass()
         process_thread = threading.Thread(target=radar_processor.process_data, args=())
         process_thread.start()
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+        # Periodic save and plot updates
+        periodic_save()  # Start saving data periodically
+        timer = QTimer()
+        timer.timeout.connect(update_plots)
+        timer.start(figure_update_time)  # Update plots every 25 ms
+
         sys.exit(app.exec_())

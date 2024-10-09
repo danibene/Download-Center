@@ -110,11 +110,15 @@ def generate_iq_plot():
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def save_data_to_csv(data, filename):
+    # Get current timestamp
+    current_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]  # Include milliseconds
+
     # Append raw I and Q data into the existing CSV file
     with open(filename, mode='a', newline='') as file:
         writer = csv.writer(file)
         for i in range(len(data)):
-            writer.writerow([IQ_xaxis[i], np.real(data[i]), np.imag(data[i])])
+            writer.writerow([current_timestamp, IQ_xaxis[i], np.real(data[i]), np.imag(data[i])])
+
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def periodic_save():

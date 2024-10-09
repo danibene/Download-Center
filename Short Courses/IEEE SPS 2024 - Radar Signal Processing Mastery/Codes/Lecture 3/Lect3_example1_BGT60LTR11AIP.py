@@ -73,7 +73,7 @@ def read_data(sensor):
 class MyProcessorClass:
     @staticmethod
     def process_data():
-        global raw_data
+        global raw_data, new_data_buffer
         while True:
             time.sleep(1 / sample_rate)
             if not data_queue.empty():
@@ -81,7 +81,7 @@ class MyProcessorClass:
                 if np.size(frame) == num_of_samples:
                     raw_data = np.roll(raw_data, -num_of_samples)
                     raw_data[-num_of_samples:] = frame
-
+                    new_data_buffer.append(frame)  # Append new frame to the buffer
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def update_plots():
@@ -109,23 +109,22 @@ def generate_iq_plot():
     return plot, plot_objects
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-def save_data_to_csv(data, filename):
-    # Get current timestamp
-    current_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]  # Include milliseconds
-
+def save_data_to_csv(data_buffer, filename):
     # Append raw I and Q data into the existing CSV file
     with open(filename, mode='a', newline='') as file:
         writer = csv.writer(file)
-        for i in range(len(data)):
-            writer.writerow([current_timestamp, IQ_xaxis[i], np.real(data[i]), np.imag(data[i])])
-
+        for frame in data_buffer:
+            current_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]  # Include milliseconds
+            for i in range(num_of_samples):
+                writer.writerow([current_timestamp, i * sample_time, np.real(frame[i]), np.imag(frame[i])])
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def periodic_save():
-    if save_to_csv:
-        save_data_to_csv(raw_data, csv_filename)
+    global new_data_buffer
+    if save_to_csv and new_data_buffer:
+        save_data_to_csv(new_data_buffer, csv_filename)
+        new_data_buffer = []  # Clear buffer after saving
     QTimer.singleShot(csv_save_interval * 1000, periodic_save)
-
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 if __name__ == "__main__":
     # Initialize application and plots

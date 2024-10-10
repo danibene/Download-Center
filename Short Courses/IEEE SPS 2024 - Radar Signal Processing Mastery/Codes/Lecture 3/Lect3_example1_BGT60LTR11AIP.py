@@ -48,7 +48,7 @@ csv_save_interval = 1  # seconds between saves
 sample_time = 1 / sample_rate
 num_of_samples = 256
 window_time = 1  # second
-buffer_time = 5 * window_time  # second
+buffer_time = 120 * window_time  # second
 figure_update_time = 25  # m second
 num_rx_antennas = 1
 raw_data_size = int(buffer_time * sample_rate)
@@ -151,7 +151,7 @@ if __name__ == "__main__":
             pulse_width=3,
             rf_frequency_Hz=61044000000,
             rx_if_gain=8,
-            tx_power_level=7,
+            tx_power_level=4,
         )
         device.set_config(config)
 
